@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your bag · Goodfind</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('shop') }}">GOODFIND<span>✳</span></a>
+    <nav class="main-nav" aria-label="Main navigation">
+      <a href="{{ url_for('shop') }}">The collection</a>
+      <a href="{{ url_for('recommendations') }}">For you</a>
+      <a class="active" href="{{ url_for('cart') }}">Your bag <span class="bag-count">{{ cart_count }}</span></a>
+    </nav>
+  </header>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-stack" role="status">
+      {% for category, message in messages %}
+      <p class="notice notice-{{ category }}">{{ message }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endwith %}
+  <main class="content">
+    <section class="collection-intro">
+      <div>
+        <p class="eyebrow">A FEW GOOD THINGS</p>
+        <h1>Your <em>bag.</em></h1>
+        <p class="intro">The things you’ve picked so far. Your selection also helps us find recommendations that suit your taste.</p>
+      </div>
+      <span class="edition-mark"><span>✳</span><br>YOUR EDIT<br>· {{ cart_count }} ITEMS</span>
+    </section>
+    {% if items %}
+    <section class="cart-list" aria-label="Items in your bag">
+      {% for item in items %}
+      <article class="cart-item">
+        <div class="cart-item-art visual-{{ loop.index }}">
+          <img src="{{ url_for('static', filename='products/' ~ item.name|lower ~ '.jpg') }}" alt="{{ item.name }}" loading="lazy" decoding="async">
+        </div>
+        <div class="cart-item-info">
+          <h2>{{ item.name }}</h2>
+          <p>Quantity: {{ item.quantity }}</p>
+        </div>
+        <span class="cart-item-price">{{ item.subtotal|inr }}</span>
+        <form method="post" action="{{ url_for('remove_from_cart', product_id=item.id) }}">
+          <button class="remove-button" type="submit">Remove</button>
+        </form>
+      </article>
+      {% endfor %}
+      <div class="cart-total"><span>Bag total</span><strong>{{ total|inr }}</strong></div>
+      <a class="primary-link" href="{{ url_for('recommendations') }}">See what goes with your picks <span aria-hidden="true">→</span></a>
+    </section>
+    {% else %}
+    <section class="empty-state">
+      <span aria-hidden="true">✳</span>
+      <h2>Your bag is taking a moment.</h2>
+      <p>Browse the collection, add something you love, and we’ll tailor recommendations around it.</p>
+      <a class="primary-link" href="{{ url_for('shop') }}">Explore the collection <span aria-hidden="true">→</span></a>
+    </section>
+    {% endif %}
+  </main>
+  <footer>GOODFIND <span>·</span> A small shop for better discoveries</footer>
+</body>
+</html>

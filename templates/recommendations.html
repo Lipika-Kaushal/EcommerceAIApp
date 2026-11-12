@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your edit · Goodfind</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('shop') }}">GOODFIND<span>✳</span></a>
+    <nav class="main-nav" aria-label="Main navigation">
+      <a href="{{ url_for('shop') }}">The collection</a>
+      <a class="active" href="{{ url_for('recommendations') }}">For you</a>
+      <a href="{{ url_for('cart') }}">Your bag <span class="bag-count">{{ cart_count }}</span></a>
+    </nav>
+  </header>
+  <main class="content">
+    <section class="collection-intro">
+      <div>
+        <p class="eyebrow">A LITTLE LESS SEARCHING</p>
+        <h1>Picked for <em>you.</em></h1>
+        {% if cart_items %}
+        <p class="intro">Inspired by {{ cart_items|map(attribute='name')|join(', ') }} in your bag and products chosen by shoppers with similar interests.</p>
+        {% else %}
+        <p class="intro">A considered collection, shaped by what other shoppers love. Add a product to your bag for recommendations tailored to your picks.</p>
+        {% endif %}
+      </div>
+      <span class="edition-mark"><span>✳</span><br>THE GOODFIND<br>EDIT · 01</span>
+    </section>
+    {% if recommendations %}
+    <section class="product-grid" aria-label="Recommended products">
+      {% for product in recommendations %}
+      <article class="product-card">
+        <div class="product-visual visual-{{ loop.index }}">
+          <span class="product-number">0{{ loop.index }}</span>
+          <img class="product-image" src="{{ url_for('static', filename='products/' ~ product.name|lower ~ '.jpg') }}" alt="{{ product.name }}" loading="lazy" decoding="async">
+          <span class="product-category">GOODFIND PICK</span>
+        </div>
+        <div class="product-details">
+          <h2>{{ product.name }}</h2>
+          <span class="price">{{ product.price|inr }}</span>
+        </div>
+        <p class="reason">{{ product.reason }}</p>
+        <form class="add-form" method="post" action="{{ url_for('add_to_cart') }}">
+          <input type="hidden" name="product_id" value="{{ product.id }}">
+          <input type="hidden" name="return_to" value="recommendations">
+          <button class="shop-button" type="submit">Add to your bag <span aria-hidden="true">+</span></button>
+        </form>
+      </article>
+      {% endfor %}
+    </section>
+    {% else %}
+    <section class="empty-state">
+      <span aria-hidden="true">✳</span>
+      <h2>You’ve found the whole collection.</h2>
+      <p>There are no new products to recommend. Check back when the collection grows.</p>
+    </section>
+    {% endif %}
+    <p class="method-note"><span>HOW IT WORKS</span> Recommendations update from the products in your bag and common co-purchase patterns in sample shopping history.</p>
+  </main>
+  <footer>GOODFIND <span>·</span> A small shop for better discoveries</footer>
+</body>
+</html>
