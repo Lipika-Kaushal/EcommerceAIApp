@@ -73,7 +73,10 @@ def add_item(cart_id):
                 INSERT INTO cart_items (cart_id, product_id, quantity)
                 VALUES (?, ?, ?)
                 ON CONFLICT(cart_id, product_id)
-                DO UPDATE SET quantity = MIN(cart_items.quantity + excluded.quantity, 99)
+                DO UPDATE SET quantity = CASE
+                    WHEN cart_items.quantity + excluded.quantity > 99 THEN 99
+                    ELSE cart_items.quantity + excluded.quantity
+                END
                 """,
                 (cart_id, product_id, quantity),
             )

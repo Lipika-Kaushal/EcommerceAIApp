@@ -12,9 +12,11 @@ of the five domain microservices.
 | Orders | Checkout, order records, and purchase history |
 | Inventory | Available stock and checkout reservations |
 
-The storefront calls these APIs over HTTP. The services own separate SQLite
-databases, and checkout reserves inventory before saving an order. Local
-product photographs are in `static/products/`.
+The storefront calls these APIs over HTTP. The Cart, Orders, and Inventory
+services store relational data in PostgreSQL. Catalog stores product documents
+in MongoDB, while Recommendations computes suggestions from Catalog and Orders
+APIs. Checkout reserves inventory before saving an order. Local product
+photographs are in `static/products/`.
 
 ## Run locally with Docker Compose
 
@@ -29,13 +31,18 @@ the original single-app demo on port 5000. Add items to the bag, view
 recommendations, and place a demo order to see the catalog, cart, recommendation,
 order, and inventory services work together.
 
-Use `docker compose ps` to check the six running containers (the five APIs and
-the storefront gateway). Stop the app with `Ctrl+C`, or run
-`docker compose down`; the named local data volume is preserved.
+Use `docker compose ps` to check the eight running containers (the five APIs,
+the storefront gateway, PostgreSQL, and MongoDB). Stop the app with `Ctrl+C`,
+or run `docker compose down`; the database volumes are preserved.
+
+Compose uses development-only database credentials by default. Set
+`POSTGRES_PASSWORD`, `MONGO_PASSWORD`, and `FLASK_SECRET_KEY` in the environment
+before starting the stack if you need non-demo local credentials.
 
 ## Run tests
 
 ```powershell
+python -m pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
 
@@ -52,21 +59,28 @@ the cluster and update the image in `deployment.yaml` to the pushed image name.
 For a local cluster, make the locally built image available to that cluster
 (for example, load it into Minikube or kind).
 
-Create the Flask session secret and deploy the workloads:
+Create the application and database credentials, then deploy the workloads:
 
 ```powershell
 $secret = python -c "import secrets; print(secrets.token_hex(32))"
-kubectl create secret generic goodfind-secrets --from-literal="flask-secret-key=$secret"
+$postgresPassword = python -c "import secrets; print(secrets.token_urlsafe(32))"
+$mongoPassword = python -c "import secrets; print(secrets.token_urlsafe(32))"
+kubectl create secret generic goodfind-secrets `
+  --from-literal="flask-secret-key=$secret" `
+  --from-literal="postgres-user=goodfind" `
+  --from-literal="postgres-password=$postgresPassword" `
+  --from-literal="mongo-user=goodfind" `
+  --from-literal="mongo-password=$mongoPassword"
 kubectl apply -f deployment.yaml -f service.yaml
 kubectl get services storefront
 ```
 
 The storefront Service is `type: LoadBalancer`; use its `EXTERNAL-IP` (or
-cluster-provider hostname) as the app URL. The five API Services are internal
-`ClusterIP` endpoints. The Deployment manifest includes persistent volume
-claims for the catalog, cart, order, and inventory SQLite databases. SQLite
-storage is configured for one replica per service; use a managed database
-before scaling services horizontally.
+cluster-provider hostname) as the app URL. The five API Services and both
+database Services are internal `ClusterIP` endpoints. The PostgreSQL and
+MongoDB StatefulSets each request persistent storage. For production Azure
+deployments, consider managed Azure Database for PostgreSQL and Azure Cosmos DB
+for MongoDB rather than running database containers in the cluster.
 
 ## Product photo sources
 

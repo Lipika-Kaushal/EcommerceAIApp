@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -7,6 +8,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from flask import jsonify
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 
 class ServiceError(Exception):
@@ -20,12 +23,66 @@ def database_path(service_name):
     return Path(os.environ.get("DB_PATH", f"/data/{service_name}.db"))
 
 
+DATABASE_ERRORS = (sqlite3.Error, psycopg2.Error)
+
+
+class PostgreSQLConnection:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def execute(self, query, parameters=()):
+        cursor = self.connection.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(re.sub(r"\?", "%s", query), parameters)
+        return cursor
+
+    def executemany(self, query, parameters):
+        cursor = self.connection.cursor(cursor_factory=RealDictCursor)
+        cursor.executemany(re.sub(r"\?", "%s", query), parameters)
+        return cursor
+
+    def executescript(self, script):
+        for statement in script.split(";"):
+            if statement.strip():
+                self.execute(statement)
+
+    def commit(self):
+        self.connection.commit()
+
+    def rollback(self):
+        self.connection.rollback()
+
+    def close(self):
+        self.connection.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, error_type, error, traceback):
+        if error_type is None:
+            self.commit()
+        else:
+            self.rollback()
+        return False
+
+
 @contextmanager
 def open_database(path):
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path, timeout=10)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
+    if os.environ.get("POSTGRES_HOST") and not os.environ.get("DB_PATH"):
+        connection = PostgreSQLConnection(
+            psycopg2.connect(
+                host=os.environ["POSTGRES_HOST"],
+                port=os.environ.get("POSTGRES_PORT", "5432"),
+                dbname=os.environ.get("POSTGRES_DB", "goodfind"),
+                user=os.environ.get("POSTGRES_USER", "goodfind"),
+                password=os.environ.get("POSTGRES_PASSWORD", ""),
+                connect_timeout=5,
+            )
+        )
+    else:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(path, timeout=10)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
     try:
         with connection:
             yield connection

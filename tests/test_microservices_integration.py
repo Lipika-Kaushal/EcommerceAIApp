@@ -5,8 +5,50 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from werkzeug.serving import make_server
+
+
+class FakeMongoCursor:
+    def __init__(self, documents):
+        self.documents = documents
+
+    def sort(self, field, direction):
+        self.documents.sort(key=lambda document: document[field], reverse=direction < 0)
+        return self
+
+    def __iter__(self):
+        return iter(self.documents)
+
+
+class FakeMongoCollection:
+    def __init__(self):
+        self.documents = {}
+
+    def create_index(self, field, unique=False):
+        return field
+
+    def update_one(self, query, update, upsert=False):
+        if upsert and query["id"] not in self.documents:
+            self.documents[query["id"]] = dict(update["$setOnInsert"])
+
+    def find(self, query, projection):
+        return FakeMongoCursor(list(self.documents.values()))
+
+    def find_one(self, query, projection):
+        return self.documents.get(query["id"])
+
+
+class FakeMongoClient:
+    def __init__(self):
+        self.admin = self
+        self.goodfind_catalog = type(
+            "CatalogDatabase", (), {"products": FakeMongoCollection()}
+        )()
+
+    def command(self, name):
+        return {"ok": 1}
 
 
 class MicroserviceIntegrationTests(unittest.TestCase):
@@ -35,7 +77,15 @@ class MicroserviceIntegrationTests(unittest.TestCase):
             os.environ["DB_PATH"] = str(
                 Path(cls.temp_directory.name) / f"{name}.db"
             )
-            cls.modules[name] = importlib.import_module(f"microservices.{name}")
+            if name == "catalog":
+                with patch("pymongo.MongoClient", return_value=FakeMongoClient()):
+                    cls.modules[name] = importlib.import_module(
+                        f"microservices.{name}"
+                    )
+            else:
+                cls.modules[name] = importlib.import_module(
+                    f"microservices.{name}"
+                )
 
         servers = {}
         for name, module in cls.modules.items():

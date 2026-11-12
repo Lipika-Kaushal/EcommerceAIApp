@@ -32,14 +32,46 @@ services:
       timeout: 3s
       retries: 5
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: goodfind
+      POSTGRES_USER: ${POSTGRES_USER:-goodfind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-password}
+    volumes:
+      - goodfind-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongodb:
+    image: mongo:7.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-goodfind}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-local-demo-password}
+    volumes:
+      - goodfind-mongo-data:/data/db
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mongosh --quiet --username "$$MONGO_INITDB_ROOT_USERNAME" --password "$$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand('ping').ok"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   catalog:
     build: .
     image: goodfind-ecommerce:latest
     command: ["sh", "-c", "exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.catalog:app"]
     environment:
-      DB_PATH: /data/catalog.db
-    volumes:
-      - goodfind-data:/data
+      MONGO_HOST: mongodb
+      MONGO_USER: ${MONGO_USER:-goodfind}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:-local-demo-password}
+    depends_on:
+      mongodb:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
@@ -55,10 +87,14 @@ services:
     image: goodfind-ecommerce:latest
     command: ["sh", "-c", "exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.cart:app"]
     environment:
-      DB_PATH: /data/cart.db
-    volumes:
-      - goodfind-data:/data
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: goodfind
+      POSTGRES_USER: ${POSTGRES_USER:-goodfind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-password}
+      CATALOG_URL: http://catalog:8000
     depends_on:
+      postgres:
+        condition: service_healthy
       catalog:
         condition: service_healthy
     healthcheck:
@@ -76,7 +112,8 @@ services:
     image: goodfind-ecommerce:latest
     command: ["sh", "-c", "exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.recommendations:app"]
     environment:
-      DB_PATH: /data/recommendations.db
+      CATALOG_URL: http://catalog:8000
+      ORDERS_URL: http://orders:8000
     depends_on:
       catalog:
         condition: service_healthy
@@ -97,10 +134,16 @@ services:
     image: goodfind-ecommerce:latest
     command: ["sh", "-c", "exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.orders:app"]
     environment:
-      DB_PATH: /data/orders.db
-    volumes:
-      - goodfind-data:/data
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: goodfind
+      POSTGRES_USER: ${POSTGRES_USER:-goodfind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-password}
+      CATALOG_URL: http://catalog:8000
+      CART_URL: http://cart:8000
+      INVENTORY_URL: http://inventory:8000
     depends_on:
+      postgres:
+        condition: service_healthy
       catalog:
         condition: service_healthy
       cart:
@@ -122,9 +165,13 @@ services:
     image: goodfind-ecommerce:latest
     command: ["sh", "-c", "exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.inventory:app"]
     environment:
-      DB_PATH: /data/inventory.db
-    volumes:
-      - goodfind-data:/data
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: goodfind
+      POSTGRES_USER: ${POSTGRES_USER:-goodfind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-password}
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
@@ -136,4 +183,5 @@ services:
       retries: 5
 
 volumes:
-  goodfind-data:
+  goodfind-postgres-data:
+  goodfind-mongo-data:

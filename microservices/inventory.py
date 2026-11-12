@@ -1,10 +1,9 @@
-import sqlite3
-
 from flask import Flask, jsonify
 
 from catalog_data import PRODUCTS
 from microservices.common import (
     ServiceError,
+    DATABASE_ERRORS,
     configure_api,
     database_path,
     open_database,
@@ -33,7 +32,10 @@ with open_database(DB_PATH) as connection:
         """
     )
     connection.executemany(
-        "INSERT OR IGNORE INTO inventory (product_id, available) VALUES (?, 25)",
+        """
+        INSERT INTO inventory (product_id, available) VALUES (?, 25)
+        ON CONFLICT (product_id) DO NOTHING
+        """,
         [(product["id"],) for product in PRODUCTS],
     )
 
@@ -73,7 +75,7 @@ def reserve_inventory():
 
     with open_database(DB_PATH) as connection:
         try:
-            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("BEGIN")
             existing = connection.execute(
                 "SELECT product_id FROM reservations WHERE order_id = ?",
                 (order_id,),
@@ -109,7 +111,7 @@ def reserve_inventory():
             connection.commit()
         except ServiceError:
             raise
-        except sqlite3.Error:
+        except DATABASE_ERRORS:
             connection.rollback()
             raise
 

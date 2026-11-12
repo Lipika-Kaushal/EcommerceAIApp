@@ -1,11 +1,11 @@
 import json
-import sqlite3
 import uuid
 
 from flask import Flask, jsonify
 
 from catalog_data import SAMPLE_PURCHASES
 from microservices.common import (
+    DATABASE_ERRORS,
     ServiceError,
     api_request,
     configure_api,
@@ -31,7 +31,7 @@ with open_database(DB_PATH) as connection:
             cart_id TEXT NOT NULL UNIQUE,
             total INTEGER NOT NULL,
             items_json TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS order_items (
             order_id TEXT NOT NULL,
@@ -47,8 +47,8 @@ with open_database(DB_PATH) as connection:
         """
     )
     existing = connection.execute(
-        "SELECT COUNT(*) FROM sample_purchases"
-    ).fetchone()[0]
+        "SELECT COUNT(*) AS count FROM sample_purchases"
+    ).fetchone()["count"]
     if not existing:
         connection.executemany(
             "INSERT INTO sample_purchases (customer_id, product_id) VALUES (?, ?)",
@@ -148,7 +148,7 @@ def create_order():
                         for item in order_items
                     ],
                 )
-    except sqlite3.Error:
+    except DATABASE_ERRORS:
         api_request(
             INVENTORY_URL,
             f"/api/inventory/release/{order_id}",
@@ -169,9 +169,12 @@ def get_order(order_id):
         ).fetchone()
     if order is None:
         return jsonify(error="Order not found."), 404
+    created_at = order["created_at"]
+    if hasattr(created_at, "isoformat"):
+        created_at = created_at.isoformat()
     return jsonify(
         id=order["id"],
         total=order["total"],
         items=json.loads(order["items_json"]),
-        created_at=order["created_at"],
+        created_at=created_at,
     )

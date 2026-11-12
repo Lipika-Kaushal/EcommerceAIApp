@@ -1,53 +1,123 @@
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: apps/v1
+kind: StatefulSet
 metadata:
-  name: goodfind-catalog-data
+  name: postgres
 spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_DB
+              value: goodfind
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: postgres-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: postgres-password
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 8Gi
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: apps/v1
+kind: StatefulSet
 metadata:
-  name: goodfind-cart-data
+  name: mongodb
 spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: goodfind-orders-data
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: goodfind-inventory-data
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+  serviceName: mongodb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:7.0
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: mongo-user
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: mongo-password
+          ports:
+            - name: mongodb
+              containerPort: 27017
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mongosh --quiet --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand('ping').ok"
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mongosh --quiet --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand('ping').ok"
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 8Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: catalog
-  labels:
-    app: catalog
 spec:
   replicas: 1
   selector:
@@ -58,8 +128,6 @@ spec:
       labels:
         app: catalog
     spec:
-      securityContext:
-        fsGroup: 10001
       containers:
         - name: catalog
           image: goodfind-ecommerce:latest
@@ -67,14 +135,21 @@ spec:
           command: ["sh", "-c"]
           args: ["exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.catalog:app"]
           env:
-            - name: DB_PATH
-              value: /data/catalog.db
+            - name: MONGO_HOST
+              value: mongodb
+            - name: MONGO_USER
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: mongo-user
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: mongo-password
           ports:
             - name: http
               containerPort: 8000
-          volumeMounts:
-            - name: data
-              mountPath: /data
           readinessProbe:
             httpGet:
               path: /health
@@ -83,24 +158,11 @@ spec:
             httpGet:
               path: /health
               port: http
-          resources:
-            requests:
-              cpu: 50m
-              memory: 96Mi
-            limits:
-              cpu: 500m
-              memory: 256Mi
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: goodfind-catalog-data
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cart
-  labels:
-    app: cart
 spec:
   replicas: 1
   selector:
@@ -111,8 +173,6 @@ spec:
       labels:
         app: cart
     spec:
-      securityContext:
-        fsGroup: 10001
       containers:
         - name: cart
           image: goodfind-ecommerce:latest
@@ -120,14 +180,25 @@ spec:
           command: ["sh", "-c"]
           args: ["exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.cart:app"]
           env:
-            - name: DB_PATH
-              value: /data/cart.db
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_DB
+              value: goodfind
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: postgres-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: postgres-password
+            - name: CATALOG_URL
+              value: http://catalog:8000
           ports:
             - name: http
               containerPort: 8000
-          volumeMounts:
-            - name: data
-              mountPath: /data
           readinessProbe:
             httpGet:
               path: /health
@@ -136,24 +207,11 @@ spec:
             httpGet:
               path: /health
               port: http
-          resources:
-            requests:
-              cpu: 50m
-              memory: 96Mi
-            limits:
-              cpu: 500m
-              memory: 256Mi
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: goodfind-cart-data
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: recommendations
-  labels:
-    app: recommendations
 spec:
   replicas: 1
   selector:
@@ -170,6 +228,11 @@ spec:
           imagePullPolicy: IfNotPresent
           command: ["sh", "-c"]
           args: ["exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.recommendations:app"]
+          env:
+            - name: CATALOG_URL
+              value: http://catalog:8000
+            - name: ORDERS_URL
+              value: http://orders:8000
           ports:
             - name: http
               containerPort: 8000
@@ -181,20 +244,11 @@ spec:
             httpGet:
               path: /health
               port: http
-          resources:
-            requests:
-              cpu: 50m
-              memory: 96Mi
-            limits:
-              cpu: 500m
-              memory: 256Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: orders
-  labels:
-    app: orders
 spec:
   replicas: 1
   selector:
@@ -205,8 +259,6 @@ spec:
       labels:
         app: orders
     spec:
-      securityContext:
-        fsGroup: 10001
       containers:
         - name: orders
           image: goodfind-ecommerce:latest
@@ -214,14 +266,29 @@ spec:
           command: ["sh", "-c"]
           args: ["exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.orders:app"]
           env:
-            - name: DB_PATH
-              value: /data/orders.db
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_DB
+              value: goodfind
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: postgres-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: postgres-password
+            - name: CATALOG_URL
+              value: http://catalog:8000
+            - name: CART_URL
+              value: http://cart:8000
+            - name: INVENTORY_URL
+              value: http://inventory:8000
           ports:
             - name: http
               containerPort: 8000
-          volumeMounts:
-            - name: data
-              mountPath: /data
           readinessProbe:
             httpGet:
               path: /health
@@ -230,24 +297,11 @@ spec:
             httpGet:
               path: /health
               port: http
-          resources:
-            requests:
-              cpu: 50m
-              memory: 96Mi
-            limits:
-              cpu: 500m
-              memory: 256Mi
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: goodfind-orders-data
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: inventory
-  labels:
-    app: inventory
 spec:
   replicas: 1
   selector:
@@ -258,8 +312,6 @@ spec:
       labels:
         app: inventory
     spec:
-      securityContext:
-        fsGroup: 10001
       containers:
         - name: inventory
           image: goodfind-ecommerce:latest
@@ -267,14 +319,23 @@ spec:
           command: ["sh", "-c"]
           args: ["exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.inventory:app"]
           env:
-            - name: DB_PATH
-              value: /data/inventory.db
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_DB
+              value: goodfind
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: postgres-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: postgres-password
           ports:
             - name: http
               containerPort: 8000
-          volumeMounts:
-            - name: data
-              mountPath: /data
           readinessProbe:
             httpGet:
               path: /health
@@ -283,24 +344,11 @@ spec:
             httpGet:
               path: /health
               port: http
-          resources:
-            requests:
-              cpu: 50m
-              memory: 96Mi
-            limits:
-              cpu: 500m
-              memory: 256Mi
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: goodfind-inventory-data
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: storefront
-  labels:
-    app: storefront
 spec:
   replicas: 1
   selector:
@@ -342,10 +390,3 @@ spec:
             httpGet:
               path: /health
               port: http
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 384Mi
