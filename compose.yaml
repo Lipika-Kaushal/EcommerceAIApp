@@ -1,0 +1,139 @@
+services:
+  web:
+    build: .
+    image: goodfind-ecommerce:latest
+    environment:
+      APP_MODULE: app
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-local-demo-secret-change-this}
+      CATALOG_URL: http://catalog:8000
+      CART_URL: http://cart:8000
+      RECOMMENDATIONS_URL: http://recommendations:8000
+      ORDERS_URL: http://orders:8000
+    ports:
+      - "127.0.0.1:5001:8000"
+    depends_on:
+      catalog:
+        condition: service_healthy
+      cart:
+        condition: service_healthy
+      recommendations:
+        condition: service_healthy
+      orders:
+        condition: service_healthy
+      inventory:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  catalog:
+    build: .
+    image: goodfind-ecommerce:latest
+    command: ["sh", "-c", "exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.catalog:app"]
+    environment:
+      DB_PATH: /data/catalog.db
+    volumes:
+      - goodfind-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  cart:
+    build: .
+    image: goodfind-ecommerce:latest
+    command: ["sh", "-c", "exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.cart:app"]
+    environment:
+      DB_PATH: /data/cart.db
+    volumes:
+      - goodfind-data:/data
+    depends_on:
+      catalog:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  recommendations:
+    build: .
+    image: goodfind-ecommerce:latest
+    command: ["sh", "-c", "exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.recommendations:app"]
+    environment:
+      DB_PATH: /data/recommendations.db
+    depends_on:
+      catalog:
+        condition: service_healthy
+      orders:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  orders:
+    build: .
+    image: goodfind-ecommerce:latest
+    command: ["sh", "-c", "exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.orders:app"]
+    environment:
+      DB_PATH: /data/orders.db
+    volumes:
+      - goodfind-data:/data
+    depends_on:
+      catalog:
+        condition: service_healthy
+      cart:
+        condition: service_healthy
+      inventory:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  inventory:
+    build: .
+    image: goodfind-ecommerce:latest
+    command: ["sh", "-c", "exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.inventory:app"]
+    environment:
+      DB_PATH: /data/inventory.db
+    volumes:
+      - goodfind-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  goodfind-data:

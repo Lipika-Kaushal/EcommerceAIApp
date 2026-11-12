@@ -52,6 +52,9 @@
       {% endfor %}
       <div class="cart-total"><span>Bag total</span><strong>{{ total|inr }}</strong></div>
       <a class="primary-link" href="{{ url_for('recommendations') }}">See what goes with your picks <span aria-hidden="true">→</span></a>
+      <form class="checkout-form" method="post" action="{{ url_for('checkout') }}">
+        <button class="primary-link checkout-button" type="submit">Place demo order <span aria-hidden="true">→</span></button>
+      </form>
     </section>
     {% else %}
     <section class="empty-state">

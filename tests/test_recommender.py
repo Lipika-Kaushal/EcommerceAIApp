@@ -1,74 +1,63 @@
-import sqlite3
 import unittest
 
-from recommender import get_recommendations
+from recommender import build_recommendations
+
+
+PRODUCTS = [
+    {"id": 1, "name": "Laptop", "price": 50000},
+    {"id": 2, "name": "Mobile", "price": 20000},
+    {"id": 3, "name": "Keyboard", "price": 1000},
+    {"id": 4, "name": "Mouse", "price": 500},
+    {"id": 5, "name": "Smartwatch", "price": 8000},
+    {"id": 6, "name": "Camera", "price": 35000},
+    {"id": 7, "name": "Tablet", "price": 28000},
+]
+PURCHASES = [
+    {"customer_id": "shopper-1", "product_id": 1},
+    {"customer_id": "shopper-1", "product_id": 4},
+    {"customer_id": "shopper-2", "product_id": 1},
+    {"customer_id": "shopper-2", "product_id": 3},
+    {"customer_id": "shopper-2", "product_id": 5},
+    {"customer_id": "shopper-2", "product_id": 6},
+    {"customer_id": "shopper-3", "product_id": 2},
+    {"customer_id": "shopper-3", "product_id": 3},
+    {"customer_id": "shopper-4", "product_id": 2},
+    {"customer_id": "shopper-4", "product_id": 3},
+    {"customer_id": "shopper-4", "product_id": 5},
+    {"customer_id": "shopper-4", "product_id": 7},
+]
 
 
 class RecommendationTests(unittest.TestCase):
-    def setUp(self):
-        self.connection = sqlite3.connect(":memory:")
-        self.connection.executescript(
-            """
-            CREATE TABLE products (id INTEGER, name TEXT, price INTEGER);
-            CREATE TABLE orders (username TEXT, product TEXT);
-            INSERT INTO products VALUES
-                (1, 'Laptop', 50000),
-                (2, 'Mobile', 20000),
-                (3, 'Keyboard', 1000),
-                (4, 'Mouse', 500),
-                (5, 'Smartwatch', 8000),
-                (6, 'Camera', 35000),
-                (7, 'Tablet', 28000);
-            INSERT INTO orders VALUES
-                ('u1', 'Laptop'),
-                ('u1', 'Mouse'),
-                ('u2', 'Laptop'),
-                ('u2', 'Keyboard'),
-                ('u2', 'Smartwatch'),
-                ('u2', 'Camera'),
-                ('u3', 'Mobile'),
-                ('u3', 'Keyboard'),
-                ('u4', 'Mobile'),
-                ('u4', 'Keyboard'),
-                ('u4', 'Smartwatch'),
-                ('u4', 'Tablet');
-            """
-        )
-
-    def tearDown(self):
-        self.connection.close()
-
     def test_personalizes_to_cart_interests_and_excludes_them(self):
-        results = get_recommendations(self.connection, ["Laptop", "Mouse"])
+        results = build_recommendations(PRODUCTS, [1, 4], PURCHASES)
 
         self.assertEqual(results[0]["name"], "Keyboard")
-        self.assertNotIn("Laptop", [item["name"] for item in results])
+        self.assertNotIn(1, [item["id"] for item in results])
         self.assertIn("Laptop", results[0]["reason"])
 
-    def test_uses_popularity_for_new_shopper_without_history(self):
-        results = get_recommendations(self.connection, [])
+    def test_recommends_related_new_catalog_products(self):
+        results = build_recommendations(PRODUCTS, [5], PURCHASES)
+
+        product_ids = [item["id"] for item in results]
+        self.assertIn(6, product_ids)
+        self.assertIn(7, product_ids)
+        self.assertNotIn(5, product_ids)
+
+    def test_uses_popularity_for_a_new_shopper(self):
+        results = build_recommendations(PRODUCTS, [], PURCHASES)
 
         self.assertEqual(results[0]["name"], "Keyboard")
         self.assertIn("Popular", results[0]["reason"])
 
-    def test_new_product_cart_interests_surface_related_products(self):
-        results = get_recommendations(self.connection, ["Smartwatch"])
-
-        names = [item["name"] for item in results]
-        self.assertIn("Camera", names)
-        self.assertIn("Tablet", names)
-        self.assertNotIn("Smartwatch", names)
-
     def test_handles_an_empty_order_history(self):
-        self.connection.execute("DELETE FROM orders")
-
-        results = get_recommendations(self.connection, [])
+        results = build_recommendations(PRODUCTS, [], [])
 
         self.assertEqual(results[0]["name"], "Laptop")
         self.assertEqual(results[0]["reason"], "A great place to start")
 
     def test_returns_no_more_than_the_requested_limit(self):
-        results = get_recommendations(self.connection, ["Laptop"], limit=1)
+        results = build_recommendations(PRODUCTS, [1], PURCHASES, limit=1)
 
         self.assertEqual(len(results), 1)
 

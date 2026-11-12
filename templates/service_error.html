@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Service temporarily unavailable · Goodfind</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('shop') }}">GOODFIND<span>✳</span></a>
+    <nav class="main-nav" aria-label="Main navigation">
+      <a href="{{ url_for('shop') }}">The collection</a>
+      <a href="{{ url_for('recommendations') }}">For you</a>
+      <a href="{{ url_for('cart') }}">Your bag</a>
+    </nav>
+  </header>
+  <main class="content">
+    <section class="empty-state service-error">
+      <span aria-hidden="true">✳</span>
+      <h1>One moment, <em>please.</em></h1>
+      <p>{{ message }}</p>
+      <a class="primary-link" href="{{ url_for('shop') }}">Try the collection again <span aria-hidden="true">→</span></a>
+    </section>
+  </main>
+  <footer>GOODFIND <span>·</span> A small shop for better discoveries</footer>
+</body>
+</html>

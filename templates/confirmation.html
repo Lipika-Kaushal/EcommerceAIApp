@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Order confirmed · Goodfind</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('shop') }}">GOODFIND<span>✳</span></a>
+    <nav class="main-nav" aria-label="Main navigation">
+      <a href="{{ url_for('shop') }}">The collection</a>
+      <a href="{{ url_for('recommendations') }}">For you</a>
+      <a href="{{ url_for('cart') }}">Your bag <span class="bag-count">{{ cart_count }}</span></a>
+    </nav>
+  </header>
+  <main class="content">
+    <section class="collection-intro">
+      <div>
+        <p class="eyebrow">THANK YOU FOR YOUR ORDER</p>
+        <h1>All <em>yours.</em></h1>
+        <p class="intro">Your demo order has been placed and the inventory service has reserved the selected items.</p>
+      </div>
+      <span class="edition-mark"><span>✳</span><br>ORDER<br>CONFIRMED</span>
+    </section>
+    <section class="cart-list">
+      {% for item in order["items"] %}
+      <article class="cart-item">
+        <div class="cart-item-art"><img src="{{ url_for('static', filename='products/' ~ item.name|lower ~ '.jpg') }}" alt="{{ item.name }}"></div>
+        <div class="cart-item-info">
+          <h2>{{ item.name }}</h2>
+          <p>Quantity: {{ item.quantity }}</p>
+        </div>
+        <span class="cart-item-price">{{ item.subtotal|inr }}</span>
+      </article>
+      {% endfor %}
+      <div class="cart-total"><span>Order total</span><strong>{{ order.total|inr }}</strong></div>
+      <p class="order-reference">Order reference: <code>{{ order.id }}</code></p>
+      <a class="primary-link" href="{{ url_for('shop') }}">Continue exploring <span aria-hidden="true">→</span></a>
+    </section>
+  </main>
+  <footer>GOODFIND <span>·</span> A small shop for better discoveries</footer>
+</body>
+</html>

@@ -1,7 +1,40 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: goodfind-data
+  name: goodfind-catalog-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: goodfind-cart-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: goodfind-orders-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: goodfind-inventory-data
 spec:
   accessModes:
     - ReadWriteOnce
@@ -12,55 +45,307 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: goodfind
+  name: catalog
   labels:
-    app: goodfind
+    app: catalog
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: goodfind
+      app: catalog
   template:
     metadata:
       labels:
-        app: goodfind
+        app: catalog
     spec:
       securityContext:
         fsGroup: 10001
       containers:
-        - name: goodfind
-          image: goodfind:latest
+        - name: catalog
+          image: goodfind-ecommerce:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args: ["exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.catalog:app"]
+          env:
+            - name: DB_PATH
+              value: /data/catalog.db
+          ports:
+            - name: http
+              containerPort: 8000
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: goodfind-catalog-data
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart
+  labels:
+    app: cart
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cart
+  template:
+    metadata:
+      labels:
+        app: cart
+    spec:
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: cart
+          image: goodfind-ecommerce:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args: ["exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.cart:app"]
+          env:
+            - name: DB_PATH
+              value: /data/cart.db
+          ports:
+            - name: http
+              containerPort: 8000
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: goodfind-cart-data
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendations
+  labels:
+    app: recommendations
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: recommendations
+  template:
+    metadata:
+      labels:
+        app: recommendations
+    spec:
+      containers:
+        - name: recommendations
+          image: goodfind-ecommerce:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args: ["exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.recommendations:app"]
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  labels:
+    app: orders
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders
+  template:
+    metadata:
+      labels:
+        app: orders
+    spec:
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: orders
+          image: goodfind-ecommerce:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args: ["exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.orders:app"]
+          env:
+            - name: DB_PATH
+              value: /data/orders.db
+          ports:
+            - name: http
+              containerPort: 8000
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: goodfind-orders-data
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory
+  labels:
+    app: inventory
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inventory
+  template:
+    metadata:
+      labels:
+        app: inventory
+    spec:
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: inventory
+          image: goodfind-ecommerce:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args: ["exec gunicorn --bind=0.0.0.0:8000 --workers=1 --access-logfile=- microservices.inventory:app"]
+          env:
+            - name: DB_PATH
+              value: /data/inventory.db
+          ports:
+            - name: http
+              containerPort: 8000
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: goodfind-inventory-data
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storefront
+  labels:
+    app: storefront
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: storefront
+  template:
+    metadata:
+      labels:
+        app: storefront
+    spec:
+      containers:
+        - name: storefront
+          image: goodfind-ecommerce:latest
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8000
-              protocol: TCP
           env:
-            - name: DATABASE_PATH
-              value: /app/data/ecommerce.db
-          volumeMounts:
-            - name: app-data
-              mountPath: /app/data
+            - name: APP_MODULE
+              value: app
+            - name: FLASK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: goodfind-secrets
+                  key: flask-secret-key
+            - name: CATALOG_URL
+              value: http://catalog:8000
+            - name: CART_URL
+              value: http://cart:8000
+            - name: RECOMMENDATIONS_URL
+              value: http://recommendations:8000
+            - name: ORDERS_URL
+              value: http://orders:8000
           readinessProbe:
             httpGet:
-              path: /
+              path: /health
               port: http
-            initialDelaySeconds: 5
-            periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /
+              path: /health
               port: http
-            initialDelaySeconds: 15
-            periodSeconds: 20
           resources:
             requests:
               cpu: 100m
               memory: 128Mi
             limits:
               cpu: 500m
-              memory: 512Mi
-      volumes:
-        - name: app-data
-          persistentVolumeClaim:
-            claimName: goodfind-data
+              memory: 384Mi

@@ -1,49 +1,77 @@
-# Goodfind AI Product Recommendations
+# Goodfind: five e-commerce microservices
 
-A small Flask e-commerce demo with an open product catalog, session-based cart,
-and item-to-item product recommendations. Add items to your bag to personalize
-recommendations from products bought together in sample shopping history.
-Suggestions include an explanation; the cart works without a username or password.
-Real product photos are included as local files, so images work without external
-image services. The photos are sourced from Unsplash and used under the
-[Unsplash License](https://unsplash.com/license).
+Goodfind is a small Flask storefront backed by five independently runnable
+domain services. The browser-facing storefront is an API gateway; it is not one
+of the five domain microservices.
 
-## Run locally
+| Microservice | Responsibility |
+|---|---|
+| Catalog | Product details and prices |
+| Cart | Shopper carts and item quantities |
+| Recommendations | Cart-driven item-to-item recommendations |
+| Orders | Checkout, order records, and purchase history |
+| Inventory | Available stock and checkout reservations |
+
+The storefront calls these APIs over HTTP. The services own separate SQLite
+databases, and checkout reserves inventory before saving an order. Local
+product photographs are in `static/products/`.
+
+## Run locally with Docker Compose
+
+Requirements: Docker Desktop with Docker Compose. From this directory:
 
 ```powershell
-python -m pip install -r requirements.txt
-python app.py
+docker compose up --build
 ```
 
-Open http://127.0.0.1:5000 to browse the 10-product collection. Add a product to your bag,
-then select **For you** to see recommendations shaped by your current cart.
-The app initializes a set of illustrative products and sample shopper
-purchase records on first run and creates `ecommerce.db` in this folder.
+Open **http://localhost:5001**. The app uses port 5001 so it can run alongside
+the original single-app demo on port 5000. Add items to the bag, view
+recommendations, and place a demo order to see the catalog, cart, recommendation,
+order, and inventory services work together.
 
-Set `DATABASE_PATH` to use a different SQLite file, and set `FLASK_SECRET_KEY`
-to a private, persistent random value outside local development.
+Use `docker compose ps` to check the six running containers (the five APIs and
+the storefront gateway). Stop the app with `Ctrl+C`, or run
+`docker compose down`; the named local data volume is preserved.
 
 ## Run tests
 
 ```powershell
-python -m unittest discover -s tests
+python -m unittest discover -s tests -v
 ```
 
-## Deploy to Azure App Service
+## Build and deploy to Kubernetes
 
-Deploy this folder as a Python App Service application. Set
-`SCM_DO_BUILD_DURING_DEPLOYMENT=true`, configure a private `FLASK_SECRET_KEY`,
-and set `DATABASE_PATH` to a writable persistent location. Use this startup
-command:
+Build the same application image used for every service:
 
-```text
-gunicorn --bind=0.0.0.0 --timeout 600 app:app
+```powershell
+docker build -t goodfind-ecommerce:latest .
 ```
 
-The demo uses SQLite and illustrative sample data; use a managed database and
-production-grade authentication before deploying a real storefront.
+For a remote Kubernetes cluster, push that image to a registry accessible by
+the cluster and update the image in `deployment.yaml` to the pushed image name.
+For a local cluster, make the locally built image available to that cluster
+(for example, load it into Minikube or kind).
+
+Create the Flask session secret and deploy the workloads:
+
+```powershell
+$secret = python -c "import secrets; print(secrets.token_hex(32))"
+kubectl create secret generic goodfind-secrets --from-literal="flask-secret-key=$secret"
+kubectl apply -f deployment.yaml -f service.yaml
+kubectl get services storefront
+```
+
+The storefront Service is `type: LoadBalancer`; use its `EXTERNAL-IP` (or
+cluster-provider hostname) as the app URL. The five API Services are internal
+`ClusterIP` endpoints. The Deployment manifest includes persistent volume
+claims for the catalog, cart, order, and inventory SQLite databases. SQLite
+storage is configured for one replica per service; use a managed database
+before scaling services horizontally.
 
 ## Product photo sources
+
+Photos are sourced from Unsplash and used under the
+[Unsplash License](https://unsplash.com/license).
 
 - Laptop: [Unsplash](https://unsplash.com/photos/macbook-pro-on-table-1496181133206-80ce9b88a853)
 - Mobile: [Unsplash](https://unsplash.com/photos/black-android-smartphone-1511707171634-5f897ff02aa9)

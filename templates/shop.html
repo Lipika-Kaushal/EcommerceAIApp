@@ -38,15 +38,15 @@
       <article class="product-card">
         <div class="product-visual visual-{{ loop.index }}">
           <span class="product-number">0{{ loop.index }}</span>
-          <img class="product-image" src="{{ url_for('static', filename='products/' ~ product[1]|lower ~ '.jpg') }}" alt="{{ product[1] }}" loading="lazy" decoding="async">
+          <img class="product-image" src="{{ url_for('static', filename='products/' ~ product.name|lower ~ '.jpg') }}" alt="{{ product.name }}" loading="lazy" decoding="async">
           <span class="product-category">THE EVERYDAY EDIT</span>
         </div>
         <div class="product-details">
-          <h2>{{ product[1] }}</h2>
-          <span class="price">{{ product[2]|inr }}</span>
+          <h2>{{ product.name }}</h2>
+          <span class="price">{{ product.price|inr }}</span>
         </div>
         <form class="add-form" method="post" action="{{ url_for('add_to_cart') }}">
-          <input type="hidden" name="product_id" value="{{ product[0] }}">
+          <input type="hidden" name="product_id" value="{{ product.id }}">
           <input type="hidden" name="return_to" value="shop">
           <button class="shop-button" type="submit">Add to your bag <span aria-hidden="true">+</span></button>
         </form>

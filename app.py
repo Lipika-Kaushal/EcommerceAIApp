@@ -1,54 +1,57 @@
 import os
 import secrets
-import sqlite3
-from contextlib import closing
+import uuid
 
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 
-from database import DATABASE_PATH, initialize_database
-from recommender import get_recommendations
+from microservices.common import ServiceError, api_request
 
-
-initialize_database()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
+SERVICE_URLS = {
+    "catalog": os.environ.get("CATALOG_URL", "http://localhost:8101"),
+    "cart": os.environ.get("CART_URL", "http://localhost:8102"),
+    "recommendations": os.environ.get(
+        "RECOMMENDATIONS_URL", "http://localhost:8103"
+    ),
+    "orders": os.environ.get("ORDERS_URL", "http://localhost:8104"),
+}
 
-def get_products():
-    with closing(sqlite3.connect(DATABASE_PATH)) as connection:
-        return connection.execute(
-            "SELECT id, name, price FROM products ORDER BY id"
-        ).fetchall()
+
+def service_call(service, path, method="GET", payload=None):
+    return api_request(SERVICE_URLS[service], path, method, payload)
+
+
+def current_cart_id():
+    if "cart_id" not in session:
+        session["cart_id"] = uuid.uuid4().hex
+    return session["cart_id"]
 
 
 def get_cart_items():
-    cart = session.get("cart", {})
-    products = {product[0]: product for product in get_products()}
+    cart = service_call("cart", f"/api/carts/{current_cart_id()}")
+    products = service_call("catalog", "/api/products")
+    product_by_id = {product["id"]: product for product in products}
     items = []
-    for product_id, quantity in cart.items():
-        try:
-            product = products.get(int(product_id))
-        except (TypeError, ValueError):
-            product = None
-        if product is not None and isinstance(quantity, int) and quantity > 0:
-            items.append(
-                {
-                    "id": product[0],
-                    "name": product[1],
-                    "price": product[2],
-                    "quantity": quantity,
-                    "subtotal": product[2] * quantity,
-                }
+    for item in cart["items"]:
+        product = product_by_id.get(item["product_id"])
+        if product is None:
+            raise ServiceError(
+                f"Product {item['product_id']} in the cart is missing from the catalog.",
+                502,
             )
+        items.append(
+            {
+                **product,
+                "quantity": item["quantity"],
+                "subtotal": product["price"] * item["quantity"],
+            }
+        )
     return items
-
-
-@app.context_processor
-def inject_cart_count():
-    return {"cart_count": sum(item["quantity"] for item in get_cart_items())}
 
 
 @app.template_filter("inr")
@@ -56,10 +59,23 @@ def format_inr(amount):
     return f"₹{amount:,.0f}"
 
 
+@app.errorhandler(ServiceError)
+def handle_service_error(error):
+    status_code = error.status_code if 400 <= error.status_code < 500 else 503
+    return render_template("service_error.html", message=error.message), status_code
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "storefront"}
+
+
 @app.get("/")
 @app.get("/shop")
 def shop():
-    return render_template("shop.html", products=get_products())
+    products = service_call("catalog", "/api/products")
+    cart_count = sum(item["quantity"] for item in get_cart_items())
+    return render_template("shop.html", products=products, cart_count=cart_count)
 
 
 @app.post("/cart/add")
@@ -77,16 +93,13 @@ def add_to_cart():
         flash("Choose a valid product and quantity.", "error")
         return redirect(destination)
 
-    product = next((p for p in get_products() if p[0] == product_id), None)
-    if product is None or quantity < 1 or quantity > 99:
-        flash("Choose a valid product and a quantity from 1 to 99.", "error")
-        return redirect(destination)
-
-    cart = session.get("cart", {})
-    key = str(product_id)
-    cart[key] = min(cart.get(key, 0) + quantity, 99)
-    session["cart"] = cart
-    flash(f"{product[1]} added to your bag.", "success")
+    service_call(
+        "cart",
+        f"/api/carts/{current_cart_id()}/items",
+        "POST",
+        {"product_id": product_id, "quantity": quantity},
+    )
+    flash("Added to your bag.", "success")
     return redirect(destination)
 
 
@@ -94,31 +107,50 @@ def add_to_cart():
 def cart():
     items = get_cart_items()
     total = sum(item["subtotal"] for item in items)
-    return render_template("cart.html", items=items, total=total)
+    cart_count = sum(item["quantity"] for item in items)
+    return render_template(
+        "cart.html", items=items, total=total, cart_count=cart_count
+    )
 
 
 @app.post("/cart/remove/<int:product_id>")
 def remove_from_cart(product_id):
-    cart = session.get("cart", {})
-    if cart.pop(str(product_id), None) is None:
-        flash("That item was not in your bag.", "error")
-    else:
-        session["cart"] = cart
-        flash("Item removed from your bag.", "success")
+    service_call(
+        "cart",
+        f"/api/carts/{current_cart_id()}/items/{product_id}",
+        "DELETE",
+    )
+    flash("Item removed from your bag.", "success")
     return redirect(url_for("cart"))
 
 
 @app.get("/recommendations")
 def recommendations():
     cart_items = get_cart_items()
-    interests = [item["name"] for item in cart_items]
-    with closing(sqlite3.connect(DATABASE_PATH)) as connection:
-        items = get_recommendations(connection, interests)
+    result = service_call(
+        "recommendations",
+        "/api/recommendations",
+        "POST",
+        {"items": [{"product_id": item["id"]} for item in cart_items]},
+    )
     return render_template(
         "recommendations.html",
-        recommendations=items,
+        recommendations=result,
         cart_items=cart_items,
+        cart_count=sum(item["quantity"] for item in cart_items),
     )
+
+
+@app.post("/checkout")
+def checkout():
+    order = service_call(
+        "orders",
+        "/api/orders",
+        "POST",
+        {"cart_id": current_cart_id()},
+    )
+    session["cart_id"] = uuid.uuid4().hex
+    return render_template("confirmation.html", order=order, cart_count=0)
 
 
 if __name__ == "__main__":
